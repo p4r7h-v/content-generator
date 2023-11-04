@@ -61,5 +61,5 @@ For any queries or suggestions, please reach out to the project maintainer at yo
 
 - [OpenAI](https://openai.com/)
 - [Streamlit](https://streamlit.io/)
-- [Explore my other work](parth.club)
+- [Explore my other work](https://parth.club)
 
