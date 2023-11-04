@@ -41,15 +41,6 @@ class OpenAIAgent:
 def load_state():
     return {"outline": ""}
 
-# Write file function
-def write_file(path, content):
-    try:
-        with open(path, 'w') as file:
-            file.write(content)
-        return "Draft saved successfully!"
-    except Exception as e:
-        logging.error(f"Error writing file: {e}")
-        return "Failed to save draft."
 
 # Main Function
 def main():
