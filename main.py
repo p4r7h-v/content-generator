@@ -1,12 +1,9 @@
 import streamlit as st
 import openai
 from tenacity import retry, stop_after_attempt, wait_fixed
-import logging
 import io
 import os
 
-# Set up logging
-logging.basicConfig(level=logging.INFO)
 
 
 # Separate OpenAI API interaction into its own class
@@ -26,10 +23,10 @@ class OpenAIAgent:
             )
             return self._parse_response(response)
         except openai.error.OpenAIError as e:
-            logging.error(f"OpenAI API error: {e}")
+            print(f"OpenAI API error: {e}")
             return ""
         except Exception as e:
-            logging.error(f"An unknown error occurred: {e}")
+            print(f"An unknown error occurred: {e}")
             return ""
 
     def _parse_response(self, response):
