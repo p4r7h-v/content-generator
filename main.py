@@ -3,14 +3,18 @@ import openai
 from tenacity import retry, stop_after_attempt, wait_fixed
 import logging
 import io
+import os
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 
+
 # Separate OpenAI API interaction into its own class
 class OpenAIAgent:
-    def __init__(self, model):
+    def __init__(self, model, api_key=None):
         self.model = model
+        self.api_key = api_key or os.getenv("OPENAI_API_KEY")
+        openai.api_key = self.api_key
 
     @retry(stop=stop_after_attempt(5), wait=wait_fixed(2))
     def call(self, messages, stream=False):
@@ -44,7 +48,10 @@ def load_state():
 
 # Main Function
 def main():
-    st.title("Automated Content Creation")
+    st.title("GPT-3 Content Generator (Text)")
+
+    # Allow users to provide an API key
+    user_api_key = st.text_input("Enter your OpenAI API Key (leave blank to use the default):")
 
     state = load_state()
     ai_agent = OpenAIAgent(model="gpt-3.5-turbo")
@@ -52,7 +59,7 @@ def main():
     content_type = st.text_input("Enter the Type of Content (e.g., outline, video script):")
     goal = st.text_input("Enter the Goal:")
     topic = st.text_input("Enter the Topic:")
-    relevant_context = st.text_area("Enter Relevant Content:", height=200)
+    relevant_context = st.text_area("Enter Relevant Context:", height=200)
     audience = st.text_input("Enter the Intended Audience:")
 
     messages = [{
