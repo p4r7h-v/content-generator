@@ -1,111 +1,93 @@
 import streamlit as st
 import openai
-import tenacity
+from tenacity import retry, stop_after_attempt, wait_fixed
+import logging
+import io
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+
+# Separate OpenAI API interaction into its own class
+class OpenAIAgent:
+    def __init__(self, model):
+        self.model = model
+
+    @retry(stop=stop_after_attempt(5), wait=wait_fixed(2))
+    def call(self, messages, stream=False):
+        try:
+            response = openai.ChatCompletion.create(
+                model=self.model,
+                messages=messages,
+                stream=stream,
+            )
+            return self._parse_response(response)
+        except openai.error.OpenAIError as e:
+            logging.error(f"OpenAI API error: {e}")
+            return ""
+        except Exception as e:
+            logging.error(f"An unknown error occurred: {e}")
+            return ""
+
+    def _parse_response(self, response):
+        response_dict = response.to_dict()
+        if 'choices' in response_dict and response_dict['choices']:
+            choice = response_dict['choices'][0]
+            if 'message' in choice and 'content' in choice['message']:
+                return choice['message']['content']
+        return ""
 
 # Cache to maintain state
 @st.cache_data()
 def load_state():
     return {"outline": ""}
 
-# Function Descriptions
-function_descriptions = [
-    {
-        "name": "write_file",
-        "description": "Writes the provided content to the provided file path.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "file_path": {"type": "string", "description": "The full file path to write the content to."},
-                "content": {"type": "string", "description": "The content to write."},
-            },
-            "required": ["file_path", "content"],
-        },
-    }
-]
-
-
-@tenacity.retry(stop=tenacity.stop_after_attempt(5), wait=tenacity.wait_fixed(2))
-def gpt_function_call(model, functions, function_call, messages, stream=False):
+# Write file function
+def write_file(path, content):
     try:
-        response = openai.ChatCompletion.create(
-            model=model,
-            messages=messages,
-            stream=stream,
-            functions=functions,
-            function_call=function_call,
-            max_tokens=150,
-        )
-        
-        print(f"Debug: Type of response is {type(response)}")
-
-        # Convert the OpenAIObject to a dictionary
-        response_dict = response.to_dict()
-
-        function_name = None
-        function_argument_text = ''
-        regular_response_text = ''
-        
-        if 'choices' in response_dict and len(response_dict['choices']) > 0:
-            choice = response_dict['choices'][0]
-            
-            if 'message' in choice and 'content' in choice['message']:
-                regular_response_text = choice['message']['content']
-
-            if 'delta' in choice and 'function_call' in choice['delta']:
-                function_call_data = choice['delta']['function_call']
-                function_name = function_call_data.get('name', None)
-                function_argument_text = function_call_data.get('arguments', '')
-
-        return regular_response_text, function_name, function_argument_text
-
-    except openai.error.OpenAIError as e:
-        print(f"OpenAI API error: {e}")
-        return None, None, None
+        with open(path, 'w') as file:
+            file.write(content)
+        return "Draft saved successfully!"
     except Exception as e:
-        print(f"An unknown error occurred: {e}")
-        return None, None, None
-
-
+        logging.error(f"Error writing file: {e}")
+        return "Failed to save draft."
 
 # Main Function
 def main():
     st.title("Automated Content Creation")
-    
-    state = load_state()
 
-    # User Inputs
+    state = load_state()
+    ai_agent = OpenAIAgent(model="gpt-3.5-turbo")
+
     content_type = st.text_input("Enter the Type of Content (e.g., outline, video script):")
     goal = st.text_input("Enter the Goal:")
     topic = st.text_input("Enter the Topic:")
-    relevant_content = st.text_area("Enter Relevant Content:", height=200)
+    relevant_context = st.text_area("Enter Relevant Content:", height=200)
     audience = st.text_input("Enter the Intended Audience:")
 
-    # Initialize your messages here
     messages = [{
         "role": "system",
-        "content": "You are a helpful assistant that helps people write content. You have access to {functions} that can help you write content. Content type is {content_type}. Goal is {goal}. Topic is {topic}. Relevant content is {relevant_content}. Audience is {audience}."
+        "content": f"You are a helpful assistant that writes content. Requested content type is {content_type}. Goal is {goal}. Topic is {topic}. Relevant context is {relevant_context}. Audience is {audience}."
     }]
-    st.markdown("## Messages")
-    st.markdown("### System")
 
-    # Generate Content Button
     if st.button("Generate Content"):
-        regular_response_text, function_name, function_argument_text = gpt_function_call(
-            model="gpt-3.5-turbo",
-            functions=function_descriptions,
-            function_call="auto",
-            messages=messages,
-            stream=False  # Update this as per your needs
-        )
+        regular_response_text = ai_agent.call(messages)
         state["outline"] = regular_response_text
+        st.markdown("### Generated Content")
         st.markdown(regular_response_text)
         st.success(f"{content_type.capitalize()} Generated!")
 
-    # Save Draft Button
-    if st.button("Save Draft"):
-        draft_path = f'drafts/{topic}_{content_type}.txt'
-        write_result = write_file(draft_path, state.get("outline", ""))
-        st.success(write_result)
+    # Generate and download the draft
+    if state["outline"]:
+        draft_filename = f'{topic}_{content_type}.txt'
+        # Convert the outline to bytes
+        to_write = io.BytesIO(state["outline"].encode())
+        st.download_button(
+            label="Download Draft",
+            data=to_write,
+            file_name=draft_filename,
+            mime="text/plain",
+        )
+
 
 if __name__ == "__main__":
     main()
